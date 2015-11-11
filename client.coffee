@@ -16,6 +16,7 @@ exports.render = !->
 	userId = Plugin.userId()
 	ownerId = Plugin.ownerId()
 	isAnonymous = Db.shared.get('anonymous')
+	isMultiple = Db.shared.get('multiple')
 
 	Dom.div !->
 		Dom.style backgroundColor: '#fff', margin: '-4px -8px', padding: '8px', borderBottom: '2px solid #ccc'
@@ -41,42 +42,45 @@ exports.render = !->
 				empty.set(!--optionsCount)
 
 			# track total votes count
-			option.ref('votes')?.observeEach (id) !->
+			option.ref('votes')?.observeEach !->
 				totalVotes.incr()
 				Obs.onClean !->
 					totalVotes.incr(-1)
 
 			Dom.div !->
-				Dom.style Box: 'middle center'
-
 				chosen = option.get('votes', userId)
+				perc = 100 * ((option.count('votes').get() / totalVotes.get())||0)
+				log 'perc', perc
+				Dom.style
+					Box: 'middle center'
+					background_: "linear-gradient(left, #ddd #{perc}%, #fff #{perc}%)"
+					border: '1px solid '+(if chosen then Plugin.colors().highlight else '#aaa')
+					borderRadius: '2px'
+					minHeight: '44px'
+					padding: '4px'
+					margin: '8px 0'
+					fontSize: '120%'
+
 				Dom.div !->
 					Dom.style
-						Box: 'center middle'
-						width: '28px'
-						height: '28px'
-						borderRadius: '16px'
+						Box: 'middle center'
+						width: '20px'
+						height: '20px'
+						borderRadius: '20px'
 						border: '1px solid '+(if chosen then Plugin.colors().highlight else '#aaa')
 						backgroundColor: (if chosen then Plugin.colors().highlight else 'inherit')
+						fontSize: '70%'
 						color: '#fff'
-						marginRight: '8px'
+						margin: '0 8px 0 4px'
 
 						if option.get('votes', userId)
 							Dom.text "✓"
 
 				Dom.div !->
-					perc = 100 * (option.count('votes').get() / totalVotes.get())
 					Dom.style
 						Box: 'middle'
 						Flex: 1
-						padding: '8px'
-						minHeight: '26px'
-						background_: "linear-gradient(left, #ddd #{perc}%, #fff #{perc}%)"
-						fontSize: '120%'
-						border: '1px solid '+(if chosen then Plugin.colors().highlight else '#aaa')
 						color: (if chosen then Plugin.colors().highlight else 'inherit')
-						borderRadius: '2px'
-						margin: '4px 0'
 
 					Dom.div !->
 						Dom.style Flex: 1
@@ -87,12 +91,13 @@ exports.render = !->
 					Dom.style
 						Box: 'center middle'
 						width: '42px'
-						height: '42px'
+						height: '38px'
 						marginLeft: '8px'
-						border: '1px solid '+(if c and !isAnonymous then Plugin.colors().highlight else '#fff')
-						color: (if c then (if isAnonymous then 'gray' else Plugin.colors().highlight) else '#ccc')
+						paddingLeft: '4px'
+						borderLeft: '1px solid '+(if isAnonymous then 'transparent' else (if chosen then Plugin.colors().highlight else 'gray'))
+						color: (if c then (if isAnonymous or !chosen then 'gray' else Plugin.colors().highlight) else '#ccc')
 						fontWeight: (if c then 'bold' else 'normal')
-						borderRadius: '2px'
+						#borderRadius: '2px'
 					Dom.span c+'x'
 					Dom.onTap !->
 						if isAnonymous
@@ -105,10 +110,9 @@ exports.render = !->
 								Dom.div !->
 									Dom.style
 										maxHeight: '40%'
-										overflow: 'auto'
-										_overflowScrolling: 'touch'
 										backgroundColor: '#eee'
 										margin: '-12px'
+									Dom.overflow()
 									option.ref('votes').observeEach (voter) !->
 										Ui.item !->
 											Ui.avatar Plugin.userAvatar voter.key()
@@ -120,14 +124,12 @@ exports.render = !->
 					highlight: false,
 					cb: !->
 						Server.sync 'vote', option.key(), !->
-							prevOptionId = null
-							Db.shared.forEach (option) !->
-								if option.get('votes', userId)
-									prevOptionId = option.key()
-									option.remove 'votes', userId
+							if !Db.shared.get('multiple')
+								Db.shared.forEach (opt) !->
+									if opt.key() isnt option.key() and opt.get('votes', userId)
+										opt.remove 'votes', userId
 
-							if prevOptionId isnt option.key()
-								Db.shared.set option.key(), 'votes', userId, true
+							Db.shared.modify option.key(), 'votes', userId, (v) -> (if v then null else true)
 					
 		, (option) -> # filter/sort function
 			if +option.key() and option.get('text')
@@ -162,6 +164,9 @@ exports.renderSettings = !->
 		text: tr 'Question'
 		value: Db.shared.func('question') if Db.shared
 
+	Form.condition (values) ->
+		tr("A question is required") if !values.question
+
 	Form.text
 		name: 'info'
 		text: tr 'Additional info (optional)'
@@ -181,16 +186,20 @@ exports.renderSettings = !->
 
 	Loglist.render 1, optionsCount, (num) !->
 		Dom.div !->
-			Dom.style Box: 'middle'
+			Dom.style
+				Box: 'middle'
+				border: '1px solid #aaa'
+				borderRadius: '2px'
+				margin: '8px 0'
 
 			Dom.div !->
 				Dom.style
 					Box: 'center middle'
-					width: '28px'
-					height: '28px'
-					borderRadius: '16px'
+					width: '20px'
+					height: '20px'
+					borderRadius: '20px'
 					border: '1px solid #aaa'
-					marginRight: '8px'
+					marginLeft: '8px'
 
 			Dom.div !->
 				Dom.style
@@ -198,10 +207,6 @@ exports.renderSettings = !->
 					Flex: 1
 					padding: '8px'
 					minHeight: '26px'
-					fontSize: '120%'
-					border: '1px solid #aaa'
-					borderRadius: '2px'
-					margin: '4px 0'
 
 				Form.input
 					simple: true
@@ -218,12 +223,32 @@ exports.renderSettings = !->
 							display: 'block'
 							border: 'none'
 
-	Form.check
-		name: 'anonymous'
-		text: tr("Voting is anonymous")
-		value: Db.shared.func('anonymous') if Db.shared
-		inScope: !->
-			Dom.style
-				marginTop: '12px'
-				borderTop: '1px solid #ddd'
-				borderBottom: '1px solid #ddd'
+	Form.condition (values) ->
+		optionCnt = 0
+		optionCnt++ for k, v of values when k.indexOf('option') is 0 and v.trim()
+		tr("At least two options should be added") if optionCnt<2
+
+	Obs.observe !->
+		voteCnt = 0
+		if Db.shared
+			for k, v of Db.shared.get()
+				continue if !+k
+				voteCnt++ for nr, vote of v.votes when vote is true
+
+		# offer options when no more than 1 vote (admin might have just given it a try)
+		if voteCnt <= 1
+			Form.sep()
+
+			Form.check
+				name: 'multiple'
+				text: tr("Multiple votes are allowed")
+				value: Db.shared.func('multiple') if Db.shared
+
+			Form.sep()
+
+			Form.check
+				name: 'anonymous'
+				text: tr("Voting is anonymous")
+				value: Db.shared.func('anonymous') if Db.shared
+
+			Form.sep()

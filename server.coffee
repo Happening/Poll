@@ -9,11 +9,6 @@ exports.onInstall = (config) !->
 	if config?
 		onConfig config
 
-		Event.create
-			unit: 'other'
-			text: "#{Plugin.userName(Plugin.ownerId())} added a poll: #{config.question}"
-			new: ['all', -Plugin.ownerId()]
-
 exports.onConfig = onConfig = (config) !->
 	if config?
 		options = {}
@@ -25,14 +20,11 @@ exports.onConfig = onConfig = (config) !->
 				Db.shared.merge k, v
 
 exports.client_vote = (optionId) !->
-	# Remove the current vote (if any)
 	prevOptionId = null
-	log 'plugin userId -->', Plugin.userId()
-	Db.shared.forEach (option) !->
-		if option.get('votes', Plugin.userId())
-			prevOptionId = option.key()
-			option.remove 'votes', Plugin.userId()
+	if !Db.shared.get('multiple')
+		Db.shared.forEach (opt) !->
+			if opt.key() isnt optionId and opt.get('votes', Plugin.userId())
+				opt.remove 'votes', Plugin.userId()
 
-	if prevOptionId isnt optionId
-		Db.shared.set optionId, 'votes', Plugin.userId(), true
+	Db.shared.modify optionId, 'votes', Plugin.userId(), (v) -> (if v then null else true)
 

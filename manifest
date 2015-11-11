@@ -1,0 +1,5 @@
+name: Poll
+description: A simple poll.
+icon: question
+api: 2
+store: 1103
