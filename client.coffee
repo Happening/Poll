@@ -1,9 +1,10 @@
+Comments = require 'comments'
 Db = require 'db'
 Dom = require 'dom'
 Modal = require 'modal'
 Loglist = require 'loglist'
 Obs = require 'obs'
-Plugin = require 'plugin'
+App = require 'app'
 Time = require 'time'
 Page = require 'page'
 Server = require 'server'
@@ -13,17 +14,17 @@ Form = require 'form'
 
 exports.render = !->
 	shared = Db.shared
-	userId = Plugin.userId()
-	ownerId = Plugin.ownerId()
+	userId = App.userId()
+	ownerId = App.ownerId()
 	isAnonymous = Db.shared.get('anonymous')
 	isMultiple = Db.shared.get('multiple')
 
-	Dom.div !->
-		Dom.style backgroundColor: '#fff', margin: '-4px -8px', padding: '8px', borderBottom: '2px solid #ccc'
+	Comments.enable legacyStore: "default"
 
+	Obs.observe !->
 		Dom.div !->
 			Dom.style Box: true
-			Dom.h1 shared.get('question')||tr("No question configured")
+			Dom.h1 App.title()
 
 		Dom.div !->
 			Dom.style marginBottom: '16px'
@@ -54,11 +55,11 @@ exports.render = !->
 				Dom.style
 					Box: 'middle center'
 					background_: "linear-gradient(left, #ddd #{perc}%, #fff #{perc}%)"
-					border: '1px solid '+(if chosen then Plugin.colors().highlight else '#aaa')
+					border: '1px solid '+(if chosen then App.colors().highlight else '#aaa')
 					borderRadius: '2px'
 					minHeight: '44px'
 					padding: '4px'
-					margin: '8px 0'
+					marginBottom: '12px'
 					fontSize: '120%'
 
 				Dom.div !->
@@ -67,8 +68,8 @@ exports.render = !->
 						width: '20px'
 						height: '20px'
 						borderRadius: '20px'
-						border: '1px solid '+(if chosen then Plugin.colors().highlight else '#aaa')
-						backgroundColor: (if chosen then Plugin.colors().highlight else 'inherit')
+						border: '1px solid '+(if chosen then App.colors().highlight else '#aaa')
+						backgroundColor: (if chosen then App.colors().highlight else 'inherit')
 						fontSize: '70%'
 						color: '#fff'
 						margin: '0 8px 0 4px'
@@ -80,7 +81,7 @@ exports.render = !->
 					Dom.style
 						Box: 'middle'
 						Flex: 1
-						color: (if chosen then Plugin.colors().highlight else 'inherit')
+						color: (if chosen then App.colors().highlight else 'inherit')
 
 					Dom.div !->
 						Dom.style Flex: 1
@@ -94,8 +95,8 @@ exports.render = !->
 						height: '38px'
 						marginLeft: '8px'
 						paddingLeft: '4px'
-						borderLeft: '1px solid '+(if isAnonymous then 'transparent' else (if chosen then Plugin.colors().highlight else 'gray'))
-						color: (if c then (if isAnonymous or !chosen then 'gray' else Plugin.colors().highlight) else '#ccc')
+						borderLeft: '1px solid '+(if isAnonymous then 'transparent' else (if chosen then App.colors().highlight else 'gray'))
+						color: (if c then (if isAnonymous or !chosen then 'gray' else App.colors().highlight) else '#ccc')
 						fontWeight: (if c then 'bold' else 'normal')
 						#borderRadius: '2px'
 					Dom.span c+'x'
@@ -106,19 +107,12 @@ exports.render = !->
 							Modal.show tr("No votes"), tr("The option '%1' hasn't received any votes yet", option.get('text'))
 						else
 							Modal.show tr("Votes by"), !->
-								Dom.style width: '80%'
-								Dom.div !->
-									Dom.style
-										maxHeight: '40%'
-										backgroundColor: '#eee'
-										margin: '-12px'
-									Dom.overflow()
-									option.ref('votes').observeEach (voter) !->
-										Ui.item !->
-											Ui.avatar Plugin.userAvatar voter.key()
-											Dom.div !->
-												Dom.style marginLeft: '4px'
-												Dom.text Plugin.userName voter.key()
+								option.ref('votes').observeEach (voter) !->
+									Ui.item !->
+										Ui.avatar App.userAvatar voter.key()
+										Dom.div !->
+											Dom.style marginLeft: '4px'
+											Dom.text App.userName voter.key()
 
 				Dom.onTap
 					highlight: false,
@@ -130,7 +124,7 @@ exports.render = !->
 										opt.remove 'votes', userId
 
 							Db.shared.modify option.key(), 'votes', userId, (v) -> (if v then null else true)
-					
+
 		, (option) -> # filter/sort function
 			if +option.key() and option.get('text')
 				log 'option text', option.get('text')
@@ -150,34 +144,26 @@ exports.render = !->
 				fontSize: '70%'
 				color: '#aaa'
 				padding: '16px 0 0'
-			Dom.text tr("Added by %1", Plugin.userName(ownerId))
+			Dom.text tr("Added by %1", App.userName(ownerId))
 			Dom.text " • "
-			Time.deltaText Plugin.created()
-
-	Dom.div !->
-		Dom.style margin: '0 -8px'
-		require('social').renderComments()
+			Time.deltaText App.created()
 
 exports.renderSettings = !->
 	Form.input
-		name: 'question'
+		name: '_title'
 		text: tr 'Question'
-		value: Db.shared.func('question') if Db.shared
+		value: App.title()
 
 	Form.condition (values) ->
-		tr("A question is required") if !values.question
+		tr("A question is required") if !values._title
 
 	Form.text
 		name: 'info'
 		text: tr 'Additional info (optional)'
 		autogrow: true
 		value: Db.shared.func('info') if Db.shared
-		inScope: !->
-			Dom.prop 'rows', 1
 
-	Form.label !->
-		Dom.style margin: '10px 0'
-		Dom.text tr("Poll options")
+	Form.label tr("Poll options")
 
 	e = Form.hidden 'count', (if Db.shared then Db.shared.get('count')||2 else 2)
 	optionsCount = Obs.create(+e.value())
@@ -190,7 +176,8 @@ exports.renderSettings = !->
 				Box: 'middle'
 				border: '1px solid #aaa'
 				borderRadius: '2px'
-				margin: '8px 0'
+				marginTop: '12px'
+				marginBottom: '12px'
 
 			Dom.div !->
 				Dom.style
@@ -208,20 +195,18 @@ exports.renderSettings = !->
 					padding: '8px'
 					minHeight: '26px'
 
-				Form.input
-					simple: true
+				Form.simpleInput
 					name: 'option'+num
 					text: tr("+ Add option %1", num)
 					value: Db.shared.func(num, 'text') if Db.shared
 					onChange: (v) !->
 						if (v||'').trim() and num is optionsCount.peek()
 							optionsCount.incr()
-					inScope: !->
-						Dom.style
-							Flex: 1
-							borderBottom: '1px solid #aaa'
-							display: 'block'
-							border: 'none'
+					style:
+						Flex: 1
+						borderBottom: '1px solid #aaa'
+						display: 'block'
+						border: 'none'
 
 	Form.condition (values) ->
 		optionCnt = 0
@@ -237,18 +222,14 @@ exports.renderSettings = !->
 
 		# offer options when no more than 1 vote (admin might have just given it a try)
 		if voteCnt <= 1
-			Form.sep()
 
 			Form.check
 				name: 'multiple'
 				text: tr("Multiple votes are allowed")
 				value: Db.shared.func('multiple') if Db.shared
 
-			Form.sep()
-
 			Form.check
 				name: 'anonymous'
 				text: tr("Voting is anonymous")
 				value: Db.shared.func('anonymous') if Db.shared
 
-			Form.sep()

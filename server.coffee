@@ -1,9 +1,6 @@
 Db = require 'db'
-Plugin = require 'plugin'
+App = require 'app'
 Event = require 'event'
-
-exports.getTitle = ->
-	Db.shared.get 'question'
 
 exports.onInstall = (config) !->
 	if config?
@@ -23,8 +20,8 @@ exports.client_vote = (optionId) !->
 	prevOptionId = null
 	if !Db.shared.get('multiple')
 		Db.shared.forEach (opt) !->
-			if opt.key() isnt optionId and opt.get('votes', Plugin.userId())
-				opt.remove 'votes', Plugin.userId()
+			if opt.key() isnt optionId and opt.get('votes', App.userId())
+				opt.remove 'votes', App.userId()
 
-	Db.shared.modify optionId, 'votes', Plugin.userId(), (v) -> (if v then null else true)
+	Db.shared.modify optionId, 'votes', App.userId(), (v) -> (if v then null else true)
 
